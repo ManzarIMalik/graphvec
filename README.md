@@ -288,6 +288,31 @@ db.subgraph(["n1", "n2", "n3"]).visualize()  # subgraph
 
 ## Architecture
 
+```mermaid
+flowchart TD
+    App["<b>Your Application</b>\nGraphVec('mydb.db')"]
+
+    subgraph api["Unified Python API"]
+        direction LR
+        Graph["<b>Graph</b>\nnodes · edges\ntraversal · algorithms\ntransactions · indexes"]
+        Vec["<b>Vector Store</b>\nembeddings\nsimilarity search\ncosine · euclidean · dot"]
+    end
+
+    Graph <-->|"hybrid query\nsearch(vec).out('RELATED').all()"| Vec
+
+    subgraph storage["Persistent Storage — single .db file"]
+        SQLite["<b>SQLite Backend</b>\nnodes &amp; edges (JSON props)\nembeddings (binary BLOB)\ncollection namespacing"]
+    end
+
+    subgraph plug["Pluggable via StorageBackend ABC"]
+        Custom["PostgreSQL · DuckDB\nLevelDB · custom …"]
+    end
+
+    App --> api
+    api --> SQLite
+    SQLite -. "swap backend" .-> Custom
+```
+
 ```
 graphvec/
 +-- db.py          GraphVec class -- entry point + collection management
@@ -304,6 +329,36 @@ graphvec/
 +-- storage/
     +-- base.py    StorageBackend ABC
     +-- sqlite.py  SQLite implementation (default)
+```
+
+**Data model** — every node can carry both structured properties and a vector embedding, making graph traversal and semantic search composable on the same data:
+
+```mermaid
+erDiagram
+    NODE {
+        string id PK
+        string label
+        json   properties
+        float  created_at
+        float  updated_at
+    }
+    EDGE {
+        string id PK
+        string src FK
+        string dst FK
+        string label
+        json   properties
+        float  weight
+    }
+    EMBEDDING {
+        string node_id FK
+        blob   vector
+        string model
+        int    dimensions
+    }
+
+    NODE ||--o{ EDGE        : "src / dst"
+    NODE ||--o| EMBEDDING   : "optional"
 ```
 
 **Storage layer**: All data lives in a single SQLite file. WAL mode is
