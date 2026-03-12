@@ -8,6 +8,10 @@ pip install graphvec[vector]  # + numpy for faster vector ops
 pip install graphvec[viz]     # + matplotlib + networkx for visualisation
 pip install graphvec[pandas]  # + pandas for .to_dataframe()
 pip install graphvec[faiss]   # + faiss-cpu for ANN on large graphs
+
+# or with uv
+uv add graphvec
+uv add "graphvec[vector]"
 ```
 
 ---
@@ -130,7 +134,8 @@ db.drop_collection("beliefs")
 ## Transactions
 
 ```python
-# Context manager -- auto-commit or rollback
+# Context manager -- all operations are buffered and committed atomically.
+# Any exception triggers a full rollback; nothing is persisted.
 with db.transaction():
     db.add_node("n1", label="Claim", text="...")
     db.add_node("n2", label="Evidence", source="...")
@@ -140,9 +145,14 @@ with db.transaction():
 txn = db.begin()
 try:
     db.add_node(...)
+    db.add_edge(...)
     txn.commit()
 except Exception:
     txn.rollback()
+
+# Bulk inserts are automatically wrapped in a single transaction
+db.add_nodes([{"id": "n1", "label": "X"}, {"id": "n2", "label": "Y"}])
+db.add_edges([{"src": "n1", "dst": "n2", "label": "Z"}])
 ```
 
 ---
@@ -300,6 +310,12 @@ graphvec/
 enabled for concurrent reads. Node/edge properties are stored as JSON
 columns; embeddings as binary BLOBs. Collections use table-name
 prefixing (`<collection>_nodes`, `<collection>_edges`, ...).
+
+**Transaction semantics**: Individual operations auto-commit when called
+outside a transaction. Inside `with g.transaction()` or after
+`g.begin()`, all writes are buffered until an explicit commit — or rolled
+back atomically on any exception. Bulk `add_nodes()` / `add_edges()` are
+always executed in a single transaction.
 
 **Custom backends**: Implement `StorageBackend` (13 abstract methods) and
 pass an instance via `GraphVec(backend=my_backend)`. No other code
