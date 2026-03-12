@@ -35,11 +35,11 @@ class Algorithms:
 
     def in_degree(self, node_id: str) -> int:
         """Return the number of edges pointing **into** *node_id*."""
-        return len(self._b.query_edges(self._c, dst=node_id))
+        return self._b.count_edges(self._c, dst=node_id)
 
     def out_degree(self, node_id: str) -> int:
         """Return the number of edges pointing **out of** *node_id*."""
-        return len(self._b.query_edges(self._c, src=node_id))
+        return self._b.count_edges(self._c, src=node_id)
 
     # ------------------------------------------------------------------
     # BFS / DFS

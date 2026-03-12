@@ -231,10 +231,9 @@ class SQLiteBackend(StorageBackend):
         existing = self.fetch_node(collection, node_id)
         if existing is None:
             return
-        merged = {**existing["properties"], **updates.get("properties", updates)}
-        # Remove internal keys that shouldn't land in properties
-        for k in ("id", "label", "created_at", "updated_at", "properties"):
-            merged.pop(k, None)
+        merged = _merge_properties(
+            existing["properties"], updates, {"id", "label", "created_at", "updated_at", "properties"}
+        )
         self._exe(
             f'UPDATE "{c}_nodes" SET properties = ?, updated_at = ? WHERE id = ?',
             (json.dumps(merged), updates.get("updated_at", existing["updated_at"]), node_id),
@@ -267,6 +266,11 @@ class SQLiteBackend(StorageBackend):
                 if all(r["properties"].get(k) == v for k, v in filters.items())
             ]
         return results
+
+    def count_nodes(self, collection: str) -> int:
+        c = self._ensure(collection)
+        row = self._exe(f'SELECT COUNT(*) AS cnt FROM "{c}_nodes"').fetchone()
+        return row["cnt"]
 
     # ------------------------------------------------------------------
     # Edge persistence
@@ -303,9 +307,11 @@ class SQLiteBackend(StorageBackend):
         existing = self.fetch_edge(collection, edge_id)
         if existing is None:
             return
-        merged = {**existing["properties"], **updates.get("properties", updates)}
-        for k in ("id", "src", "dst", "label", "weight", "created_at", "updated_at", "properties"):
-            merged.pop(k, None)
+        merged = _merge_properties(
+            existing["properties"],
+            updates,
+            {"id", "src", "dst", "label", "weight", "created_at", "updated_at", "properties"},
+        )
         weight = updates.get("weight", existing["weight"])
         self._exe(
             f'UPDATE "{c}_edges" SET properties = ?, weight = ?, updated_at = ? WHERE id = ?',
@@ -347,6 +353,47 @@ class SQLiteBackend(StorageBackend):
                 if all(r["properties"].get(k) == v for k, v in filters.items())
             ]
         return results
+
+    def count_edges(
+        self,
+        collection: str,
+        label: str | None = None,
+        src: str | None = None,
+        dst: str | None = None,
+    ) -> int:
+        c = self._ensure(collection)
+        sql = f'SELECT COUNT(*) AS cnt FROM "{c}_edges"'
+        params: list[Any] = []
+        conditions: list[str] = []
+        if label is not None:
+            conditions.append("label = ?")
+            params.append(label)
+        if src is not None:
+            conditions.append("src = ?")
+            params.append(src)
+        if dst is not None:
+            conditions.append("dst = ?")
+            params.append(dst)
+        if conditions:
+            sql += " WHERE " + " AND ".join(conditions)
+        row = self._exe(sql, tuple(params)).fetchone()
+        return row["cnt"]
+
+    def has_edge(
+        self,
+        collection: str,
+        src: str,
+        dst: str,
+        label: str | None = None,
+    ) -> bool:
+        c = self._ensure(collection)
+        sql = f'SELECT 1 FROM "{c}_edges" WHERE src = ? AND dst = ?'
+        params: list[Any] = [src, dst]
+        if label is not None:
+            sql += " AND label = ?"
+            params.append(label)
+        sql += " LIMIT 1"
+        return self._exe(sql, tuple(params)).fetchone() is not None
 
     # ------------------------------------------------------------------
     # Embedding persistence
@@ -459,16 +506,28 @@ class SQLiteBackend(StorageBackend):
 
 
 # ------------------------------------------------------------------
-# Row conversion helpers
+# Helpers
 # ------------------------------------------------------------------
 
-def _node_row(row: sqlite3.Row) -> dict[str, Any]:
+def _deserialize_row(row: sqlite3.Row) -> dict[str, Any]:
+    """Convert a sqlite3.Row to a dict, deserialising the JSON properties column."""
     d = dict(row)
     d["properties"] = json.loads(d.get("properties") or "{}")
     return d
 
 
-def _edge_row(row: sqlite3.Row) -> dict[str, Any]:
-    d = dict(row)
-    d["properties"] = json.loads(d.get("properties") or "{}")
-    return d
+# Backwards-compatible aliases (used extensively above)
+_node_row = _deserialize_row
+_edge_row = _deserialize_row
+
+
+def _merge_properties(
+    existing_props: dict[str, Any],
+    updates: dict[str, Any],
+    exclude_keys: set[str],
+) -> dict[str, Any]:
+    """Merge update properties into existing, removing internal keys."""
+    merged = {**existing_props, **updates.get("properties", updates)}
+    for k in exclude_keys:
+        merged.pop(k, None)
+    return merged

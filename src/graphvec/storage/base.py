@@ -91,6 +91,10 @@ class StorageBackend(ABC):
     ) -> list[dict[str, Any]]:
         """Return all nodes matching optional *label* and property *filters*."""
 
+    @abstractmethod
+    def count_nodes(self, collection: str) -> int:
+        """Return total number of nodes without loading rows into Python."""
+
     # ------------------------------------------------------------------
     # Edge persistence
     # ------------------------------------------------------------------
@@ -121,6 +125,26 @@ class StorageBackend(ABC):
         filters: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """Return all edges matching the provided filters."""
+
+    @abstractmethod
+    def count_edges(
+        self,
+        collection: str,
+        label: str | None = None,
+        src: str | None = None,
+        dst: str | None = None,
+    ) -> int:
+        """Return edge count without loading rows into Python."""
+
+    @abstractmethod
+    def has_edge(
+        self,
+        collection: str,
+        src: str,
+        dst: str,
+        label: str | None = None,
+    ) -> bool:
+        """Return ``True`` if at least one matching edge exists (``LIMIT 1``)."""
 
     # ------------------------------------------------------------------
     # Embedding persistence

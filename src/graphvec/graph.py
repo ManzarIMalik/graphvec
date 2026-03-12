@@ -4,6 +4,7 @@ traversal, vector search, algorithms, and transactions.
 
 from __future__ import annotations
 
+import json
 import time
 import uuid
 from collections.abc import Callable, Generator
@@ -147,7 +148,7 @@ class Graph:
 
     def node_count(self) -> int:
         """Return the total number of nodes in the graph."""
-        return len(self._backend.query_nodes(self._collection))
+        return self._backend.count_nodes(self._collection)
 
     def node_exists(self, id: str) -> bool:
         """Return ``True`` if a node with *id* exists.
@@ -203,9 +204,13 @@ class Graph:
         Raises:
             NodeNotFound: If either *src* or *dst* does not exist.
         """
-        if not self.node_exists(src):
+        found = {
+            r["id"]
+            for r in self._backend.fetch_nodes_by_ids(self._collection, [src, dst])
+        }
+        if src not in found:
             raise NodeNotFound(src)
-        if not self.node_exists(dst):
+        if dst not in found:
             raise NodeNotFound(dst)
         now = time.time()
         edge_id = str(uuid.uuid4())
@@ -297,7 +302,7 @@ class Graph:
 
     def edge_count(self) -> int:
         """Return the total number of edges in the graph."""
-        return len(self._backend.query_edges(self._collection))
+        return self._backend.count_edges(self._collection)
 
     def edge_exists(self, src: str, dst: str, label: str | None = None) -> bool:
         """Return ``True`` if at least one edge from *src* to *dst* exists.
@@ -307,10 +312,7 @@ class Graph:
             dst: Destination node id.
             label: If given, also match on edge label.
         """
-        rows = self._backend.query_edges(
-            self._collection, label=label, src=src, dst=dst
-        )
-        return len(rows) > 0
+        return self._backend.has_edge(self._collection, src, dst, label=label)
 
     def add_edges(self, edge_list: list[dict[str, Any]]) -> list[Edge]:
         """Bulk insert multiple edges in a single transaction.
@@ -498,7 +500,7 @@ class Graph:
             # Hybrid: search then traverse
             g.search(vec, k=3).out("RELATED_TO").all()
         """
-        node_rows = self._backend.query_nodes(self._collection)
+        node_rows = self._backend.query_nodes(self._collection, label=label)
         results = self._vectors.search(
             query_vector,
             k=k,
@@ -734,12 +736,9 @@ class Subgraph:
         Args:
             path: Destination file path.
         """
-        import json
-        import time as _time
-
         snapshot = {
             "version": 1,
-            "exported_at": _time.time(),
+            "exported_at": time.time(),
             "nodes": [
                 {
                     "id": n.id,

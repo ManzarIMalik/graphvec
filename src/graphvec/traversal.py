@@ -55,16 +55,17 @@ class Traversal:
             hops: Number of times to repeat the step (default ``1``).
         """
         for _ in range(hops):
-            next_nodes: dict[str, dict[str, Any]] = {}
+            target_ids: dict[str, None] = {}
             for node in self._nodes:
                 edges = self._backend.query_edges(
                     self._collection, label=label, src=node["id"]
                 )
                 for edge in edges:
-                    nbr = self._backend.fetch_node(self._collection, edge["dst"])
-                    if nbr and nbr["id"] not in next_nodes:
-                        next_nodes[nbr["id"]] = nbr
-            self._nodes = list(next_nodes.values())
+                    target_ids.setdefault(edge["dst"], None)
+            rows = self._backend.fetch_nodes_by_ids(
+                self._collection, list(target_ids)
+            )
+            self._nodes = rows
         return self
 
     def in_(self, label: str | None = None, hops: int = 1) -> Traversal:
@@ -75,16 +76,17 @@ class Traversal:
             hops: Number of times to repeat the step (default ``1``).
         """
         for _ in range(hops):
-            next_nodes: dict[str, dict[str, Any]] = {}
+            target_ids: dict[str, None] = {}
             for node in self._nodes:
                 edges = self._backend.query_edges(
                     self._collection, label=label, dst=node["id"]
                 )
                 for edge in edges:
-                    nbr = self._backend.fetch_node(self._collection, edge["src"])
-                    if nbr and nbr["id"] not in next_nodes:
-                        next_nodes[nbr["id"]] = nbr
-            self._nodes = list(next_nodes.values())
+                    target_ids.setdefault(edge["src"], None)
+            rows = self._backend.fetch_nodes_by_ids(
+                self._collection, list(target_ids)
+            )
+            self._nodes = rows
         return self
 
     def both(self, label: str | None = None, hops: int = 1) -> Traversal:
@@ -95,7 +97,7 @@ class Traversal:
             hops: Number of times to repeat the step (default ``1``).
         """
         for _ in range(hops):
-            next_nodes: dict[str, dict[str, Any]] = {}
+            target_ids: dict[str, None] = {}
             for node in self._nodes:
                 for direction in ("src", "dst"):
                     kwargs: dict[str, Any] = {"label": label}
@@ -106,12 +108,11 @@ class Traversal:
                         kwargs["dst"] = node["id"]
                         other_key = "src"
                     for edge in self._backend.query_edges(self._collection, **kwargs):
-                        nbr = self._backend.fetch_node(
-                            self._collection, edge[other_key]
-                        )
-                        if nbr and nbr["id"] not in next_nodes:
-                            next_nodes[nbr["id"]] = nbr
-            self._nodes = list(next_nodes.values())
+                        target_ids.setdefault(edge[other_key], None)
+            rows = self._backend.fetch_nodes_by_ids(
+                self._collection, list(target_ids)
+            )
+            self._nodes = rows
         return self
 
     # ------------------------------------------------------------------
@@ -246,11 +247,8 @@ class SearchTraversal:
 
     # Delegate graph traversal steps to an inner Traversal
     def _as_traversal(self) -> Traversal:
-        seed = []
-        for r in self._results:
-            row = self._backend.fetch_node(self._collection, r.node.id)
-            if row:
-                seed.append(row)
+        ids = [r.node.id for r in self._results]
+        seed = self._backend.fetch_nodes_by_ids(self._collection, ids)
         return Traversal(self._backend, self._collection, seed)
 
     def out(self, label: str | None = None, hops: int = 1) -> Traversal:
@@ -272,6 +270,10 @@ class SearchTraversal:
     def has_label(self, label: str) -> Traversal:
         """Filter search result nodes by label."""
         return self._as_traversal().has_label(label)
+
+    def has_not(self, **kwargs: Any) -> Traversal:
+        """Filter search result nodes by negative property match."""
+        return self._as_traversal().has_not(**kwargs)
 
     def where(self, fn: Callable[[Node], bool]) -> Traversal:
         """Filter search result nodes with a predicate."""
