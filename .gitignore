@@ -4,7 +4,32 @@ __pycache__/
 build/
 dist/
 wheels/
-*.egg-info
+*.egg-info/
 
 # Virtual environments
-.venv
+.venv/
+venv/
+
+# Test & coverage
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+
+# Ruff cache
+.ruff_cache/
+
+# Type checker
+.mypy_cache/
+
+# Database files created during dev/testing
+*.db
+
+# macOS
+.DS_Store
+
+# Editor
+.idea/
+.vscode/
+
+.agents
